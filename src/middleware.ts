@@ -1,41 +1,38 @@
-export const dynamic = "force-dynamic";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server'
+import { jwtVerify } from 'jose'
 
-export function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-  const secretPath = process.env.ADMIN_SECRET_PATH;
+const PUBLIC_PATHS = ['/', '/api/auth/line', '/api/auth/line-callback']
+const PROTECTED    = ['/home', '/scan', '/rewards', '/map', '/me', '/merchant', '/admin']
 
-  // ── Admin API: inject token from cookie to header ──
-  if (pathname.startsWith("/api/admin/")) {
-    const token = req.cookies.get("pj_admin_token")?.value;
-    const res = NextResponse.next();
-    if (token) {
-      const headers = new Headers(req.headers);
-      headers.set("x-admin-token", token);
-      return NextResponse.next({ request: { headers } });
-    }
-    return res;
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+
+  // Allow public paths
+  if (PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith('/api/auth'))) {
+    return NextResponse.next()
   }
 
-  // ── Secret path guard ──
-  if (!secretPath) return NextResponse.next();
+  // Check if route needs protection
+  const needsAuth = PROTECTED.some(p => pathname.startsWith(p))
+  if (!needsAuth) return NextResponse.next()
 
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    const referer = req.headers.get("referer") || "";
-    const token = req.cookies.get("pj_admin_token")?.value;
-    if (token || referer.includes(`/${secretPath}`)) return NextResponse.next();
-    return new NextResponse("Not Found", { status: 404 });
+  const session = req.cookies.get('session')?.value
+
+  if (!session) {
+    return NextResponse.redirect(new URL('/', req.url))
   }
 
-  if (pathname === `/${secretPath}`) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/admin";
-    return NextResponse.rewrite(url);
+  try {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET!)
+    await jwtVerify(session, secret)
+    return NextResponse.next()
+  } catch {
+    const res = NextResponse.redirect(new URL('/', req.url))
+    res.cookies.delete('session')
+    return res
   }
-
-  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon|icon|apple|manifest|uploads).*)"],
-};
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icons).*)'],
+}

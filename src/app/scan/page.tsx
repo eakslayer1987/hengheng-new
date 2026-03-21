@@ -1,376 +1,415 @@
-"use client";
-import { useEffect, useState, useRef, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+'use client'
+/**
+ * /app/scan/page.tsx — QR Scan Flow
+ * 1. Camera + jsQR  2. GPS check  3. Form  4. POST claim
+ */
 
-type Step = "form" | "loading" | "success" | "blocked";
+import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
+import jsQR from 'jsqr'
+import { useUserStore } from '@/store'
+import { useClaim } from '@/lib/hooks'
+import { getMerchantStatus } from '@/lib/api'
+import { getUserLocation, haversineDistance } from '@/lib/utils'
+import type { Merchant, ClaimResult } from '@/lib/api'
 
-interface ScanResult {
-  code?: string;
-  merchantName?: string;
-  campaignName?: string;
-  campaignEndDate?: string;
-  todayUsed?: number;
-  dailyLimit?: number;
-  remainingToday?: number;
-  error?: string;
-}
-
-function ScanForm() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const merchantPhone = params.get("shop") || params.get("m") || "";
-
-  const [step, setStep] = useState<Step>("form");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [gpsStatus, setGpsStatus] = useState<"idle" | "loading" | "ok" | "denied">("idle");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const [errMsg, setErrMsg] = useState("");
-  const nameRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!merchantPhone) {
-      router.replace("/");
-    }
-    // Auto-request GPS on mount
-    requestGps();
-    setTimeout(() => nameRef.current?.focus(), 300);
-  }, []);
-
-  function requestGps() {
-    if (!navigator.geolocation) return;
-    setGpsStatus("loading");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGpsStatus("ok");
-      },
-      () => setGpsStatus("denied"),
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  }
-
-  async function handleSubmit() {
-    if (!name.trim()) { setErrMsg("กรุณากรอกชื่อ"); return; }
-    const cleanPhone = phone.replace(/\D/g, "");
-    if (cleanPhone.length < 9) { setErrMsg("กรุณากรอกเบอร์โทรให้ถูกต้อง"); return; }
-    setErrMsg("");
-    setStep("loading");
-
-    try {
-      const res = await fetch("/api/lucky/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          merchantPhone,
-          customerName: name.trim(),
-          customerPhone: cleanPhone,
-          customerLat: coords?.lat,
-          customerLng: coords?.lng,
-        }),
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setResult(data);
-        setStep("success");
-      } else {
-        setResult({ error: data.error || "เกิดข้อผิดพลาด" });
-        setStep("blocked");
-      }
-    } catch {
-      setResult({ error: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
-      setStep("blocked");
-    }
-  }
-
-  // ─── Loading ──────────────────────────────────────────────────
-  if (step === "loading") {
-    return (
-      <Screen>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 56, marginBottom: 16, animation: "spin 1s linear infinite" }}>⚙️</div>
-          <p style={{ color: "rgba(232,184,32,0.8)", fontSize: 16 }}>กำลังตรวจสอบ...</p>
-          <style>{`@keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }`}</style>
-        </div>
-      </Screen>
-    );
-  }
-
-  // ─── Success ──────────────────────────────────────────────────
-  if (step === "success" && result) {
-    return (
-      <Screen>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 64, marginBottom: 8, animation: "pop .4s ease" }}>🎉</div>
-          <h2 style={{ color: "#FFD700", fontSize: 22, fontWeight: 800, marginBottom: 4 }}>
-            รับโค้ดสำเร็จ!
-          </h2>
-          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginBottom: 20 }}>
-            {result.campaignName}
-          </p>
-
-          {/* Code card */}
-          <div style={{
-            background: "rgba(255,255,255,0.1)",
-            border: "2px dashed rgba(255,215,0,0.5)",
-            borderRadius: 16,
-            padding: "20px 32px",
-            marginBottom: 20,
-          }}>
-            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 6 }}>รหัสโชคของคุณ</p>
-            <p style={{
-              fontFamily: "monospace",
-              fontSize: 28,
-              fontWeight: 900,
-              color: "#FFD700",
-              letterSpacing: 6,
-            }}>
-              {result.code}
-            </p>
-          </div>
-
-          {/* Stats row */}
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 24 }}>
-            <StatBadge label="วันนี้" value={`${result.todayUsed}/${result.dailyLimit}`} />
-            <StatBadge label="คงเหลือ" value={`${result.remainingToday} ครั้ง`} />
-          </div>
-
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginBottom: 24 }}>
-            จาก {result.merchantName} • หมดเขต {result.campaignEndDate ? new Date(result.campaignEndDate).toLocaleDateString("th-TH") : "-"}
-          </p>
-
-          <button onClick={() => router.replace("/")} style={btnStyle("#FD1803")}>
-            กลับหน้าหลัก
-          </button>
-          <style>{`@keyframes pop { 0%{transform:scale(0)} 80%{transform:scale(1.2)} 100%{transform:scale(1)} }`}</style>
-        </div>
-      </Screen>
-    );
-  }
-
-  // ─── Blocked ──────────────────────────────────────────────────
-  if (step === "blocked" && result) {
-    return (
-      <Screen>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 56, marginBottom: 12 }}>🚫</div>
-          <h2 style={{ color: "#FF6B6B", fontSize: 20, fontWeight: 800, marginBottom: 12 }}>
-            ไม่สามารถรับโค้ดได้
-          </h2>
-          <div style={{
-            background: "rgba(255,107,107,0.15)",
-            border: "1px solid rgba(255,107,107,0.3)",
-            borderRadius: 12,
-            padding: "16px 20px",
-            marginBottom: 24,
-          }}>
-            <p style={{ color: "#FFB3B3", fontSize: 15, lineHeight: 1.6 }}>{result.error}</p>
-          </div>
-          <button onClick={() => setStep("form")} style={btnStyle("rgba(255,255,255,0.15)")}>
-            ← ลองใหม่
-          </button>
-        </div>
-      </Screen>
-    );
-  }
-
-  // ─── Form ─────────────────────────────────────────────────────
-  return (
-    <Screen>
-      {/* Header */}
-      <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <div style={{ fontSize: 44, marginBottom: 8 }}>📱</div>
-        <h1 style={{ color: "#FFD700", fontSize: 22, fontWeight: 900, marginBottom: 4 }}>
-          สแกน QR รับโค้ดลุ้นโชค
-        </h1>
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>
-          กรอกข้อมูลเพื่อรับโค้ดสะสมแต้ม
-        </p>
-      </div>
-
-      {/* GPS Status bar */}
-      <GpsBar status={gpsStatus} onRetry={requestGps} />
-
-      {/* Form fields */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-        <Field
-          ref={nameRef}
-          label="ชื่อ-นามสกุล"
-          placeholder="กรุณากรอกชื่อ"
-          value={name}
-          onChange={setName}
-          icon="👤"
-        />
-        <Field
-          label="เบอร์โทรศัพท์"
-          placeholder="0812345678"
-          value={phone}
-          onChange={setPhone}
-          icon="📞"
-          type="tel"
-          maxLength={10}
-        />
-      </div>
-
-      {errMsg && (
-        <p style={{ color: "#FF6B6B", fontSize: 13, textAlign: "center", marginBottom: 12 }}>
-          ⚠️ {errMsg}
-        </p>
-      )}
-
-      <button
-        onClick={handleSubmit}
-        disabled={!name.trim() || phone.replace(/\D/g, "").length < 9}
-        style={{
-          ...btnStyle("#FD1803"),
-          opacity: !name.trim() || phone.replace(/\D/g, "").length < 9 ? 0.5 : 1,
-          width: "100%",
-        }}
-      >
-        รับโค้ดเลย 🎯
-      </button>
-
-      <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, textAlign: "center", marginTop: 16 }}>
-        🔒 ข้อมูลของคุณปลอดภัย ใช้เพื่อการจับรางวัลเท่านั้น
-      </p>
-    </Screen>
-  );
-}
-
-// ─── Sub-components ────────────────────────────────────────────────
-
-function Screen({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      minHeight: "100vh",
-      background: "linear-gradient(160deg,#2a0202 0%,#4a0808 50%,#1a0101 100%)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "24px 16px",
-      fontFamily: "'Kanit', sans-serif",
-    }}>
-      <div style={{
-        width: "100%",
-        maxWidth: 420,
-        background: "rgba(255,255,255,0.07)",
-        border: "1px solid rgba(255,215,0,0.2)",
-        borderRadius: 24,
-        padding: "32px 24px",
-        backdropFilter: "blur(12px)",
-      }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function GpsBar({ status, onRetry }: { status: string; onRetry: () => void }) {
-  const configs: Record<string, { icon: string; text: string; color: string }> = {
-    idle:    { icon: "📍", text: "รอตรวจสอบ GPS...",     color: "rgba(255,255,255,0.2)" },
-    loading: { icon: "🔄", text: "กำลังหาตำแหน่ง...",   color: "rgba(255,215,0,0.3)" },
-    ok:      { icon: "✅", text: "ตรวจสอบตำแหน่งแล้ว", color: "rgba(100,220,100,0.2)" },
-    denied:  { icon: "⚠️", text: "ไม่สามารถเข้าถึง GPS",color: "rgba(255,107,107,0.2)" },
-  };
-  const c = configs[status] || configs.idle;
-  return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      background: c.color,
-      borderRadius: 10,
-      padding: "10px 14px",
-      marginBottom: 20,
-      fontSize: 13,
-      color: "rgba(255,255,255,0.8)",
-    }}>
-      <span>{c.icon} {c.text}</span>
-      {status === "denied" && (
-        <button onClick={onRetry} style={{
-          background: "rgba(255,255,255,0.2)",
-          border: "none",
-          borderRadius: 6,
-          color: "#fff",
-          padding: "4px 10px",
-          fontSize: 12,
-          cursor: "pointer",
-        }}>
-          ลองใหม่
-        </button>
-      )}
-    </div>
-  );
-}
-
-const Field = ({ label, placeholder, value, onChange, icon, type = "text", maxLength, ref }: {
-  label: string; placeholder: string; value: string;
-  onChange: (v: string) => void; icon: string;
-  type?: string; maxLength?: number;
-  ref?: React.RefObject<HTMLInputElement>;
-}) => (
-  <div>
-    <label style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginBottom: 6, display: "block" }}>
-      {icon} {label}
-    </label>
-    <input
-      ref={ref}
-      type={type}
-      placeholder={placeholder}
-      value={value}
-      maxLength={maxLength}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: "100%",
-        background: "rgba(255,255,255,0.1)",
-        border: "1px solid rgba(255,215,0,0.3)",
-        borderRadius: 12,
-        padding: "13px 16px",
-        color: "#fff",
-        fontSize: 16,
-        outline: "none",
-        boxSizing: "border-box",
-        fontFamily: "'Kanit', sans-serif",
-      }}
-    />
-  </div>
-);
-
-function StatBadge({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{
-      background: "rgba(255,255,255,0.1)",
-      borderRadius: 10,
-      padding: "8px 16px",
-      textAlign: "center",
-    }}>
-      <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, margin: 0 }}>{label}</p>
-      <p style={{ color: "#FFD700", fontWeight: 700, fontSize: 16, margin: 0 }}>{value}</p>
-    </div>
-  );
-}
-
-function btnStyle(bg: string): React.CSSProperties {
-  return {
-    background: bg,
-    color: "#fff",
-    border: "none",
-    borderRadius: 14,
-    padding: "14px 28px",
-    fontSize: 16,
-    fontWeight: 700,
-    cursor: "pointer",
-    fontFamily: "'Kanit', sans-serif",
-    transition: "transform .15s",
-  };
-}
+type Step = 'scanning' | 'confirm' | 'success' | 'error'
 
 export default function ScanPage() {
+  const router    = useRouter()
+  const videoRef  = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const rafRef    = useRef<number>()
+
+  const lineId    = useUserStore(s => s.lineId)
+  const phone     = useUserStore(s => s.phone)
+  const addCode   = useUserStore(s => s.addCode)
+  const todaySc   = useUserStore(s => s.todayScans)
+
+  const [step,      setStep]      = useState<Step>('scanning')
+  const [merchant,  setMerchant]  = useState<Merchant | null>(null)
+  const [gpsOk,     setGpsOk]     = useState(false)
+  const [distance,  setDistance]  = useState<number | null>(null)
+  const [formName,  setFormName]  = useState('')
+  const [formPhone, setFormPhone] = useState(phone ?? '')
+  const [result,    setResult]    = useState<ClaimResult | null>(null)
+  const [error,     setError]     = useState('')
+  const [loading,   setLoading]   = useState(false)
+
+  const { trigger: doClaim } = useClaim()
+
+  // Guard: not logged in
+  useEffect(() => { if (!lineId) router.replace('/') }, [lineId, router])
+
+  // Start camera
+  useEffect(() => {
+    let stream: MediaStream
+    const startCam = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 } },
+        })
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play()
+          tick()
+        }
+      } catch { /* no cam in browser preview */ }
+    }
+    if (step === 'scanning') startCam()
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      stream?.getTracks().forEach(t => t.stop())
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
+
+  const tick = useCallback(() => {
+    const video  = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || video.readyState < 2) {
+      rafRef.current = requestAnimationFrame(tick); return
+    }
+    const ctx = canvas.getContext('2d')!
+    canvas.width  = video.videoWidth
+    canvas.height = video.videoHeight
+    ctx.drawImage(video, 0, 0)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const code = jsQR(imageData.data, imageData.width, imageData.height)
+    if (code?.data) handleQRFound(code.data)
+    else rafRef.current = requestAnimationFrame(tick)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleQRFound = async (data: string) => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    try {
+      // phone of merchant is encoded in QR
+      const merchantPhone = data.trim()
+      const [mer, coords] = await Promise.all([
+        getMerchantStatus(merchantPhone),
+        getUserLocation(),
+      ])
+      const dist = haversineDistance(
+        coords.latitude, coords.longitude,
+        mer.lat, mer.lng
+      )
+      setMerchant(mer)
+      setDistance(Math.round(dist))
+      setGpsOk(dist <= 20)
+      setStep('confirm')
+    } catch (e: any) {
+      setError(e.message ?? 'เกิดข้อผิดพลาด')
+      setStep('error')
+    }
+  }
+
+  const handleClaim = async () => {
+    if (!merchant || !formName || !formPhone) return
+    setLoading(true)
+    try {
+      const coords = await getUserLocation()
+      const res = await doClaim({
+        merchantPhone: merchant.phone,
+        customerName:  formName,
+        customerPhone: formPhone,
+        lat: coords.latitude,
+        lng: coords.longitude,
+      })
+      setResult(res)
+      addCode({
+        code:         res.ticketCode,
+        merchantName: merchant.name,
+        claimedAt:    new Date().toISOString(),
+        status:       'active',
+      })
+      setStep('success')
+    } catch (e: any) {
+      setError(e.message ?? 'ไม่สามารถรับสิทธิ์ได้')
+      setStep('error')
+    } finally { setLoading(false) }
+  }
+
   return (
-    <Suspense>
-      <ScanForm />
-    </Suspense>
-  );
+    <div className="flex flex-col h-dvh max-w-[430px] mx-auto overflow-hidden
+                    bg-gradient-to-b from-[#7A0018] to-[#3D0008] damask-bg">
+
+      {/* Topbar */}
+      <header className="flex items-center gap-3 px-5 h-14 flex-shrink-0
+                         border-b border-[rgba(201,150,58,.15)] bg-[rgba(61,0,16,.9)]">
+        <button onClick={() => router.back()}
+                className="w-9 h-9 rounded-xl border border-[rgba(201,150,58,.2)]
+                           bg-black/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#F7D37A]" viewBox="0 0 24 24" fill="none">
+            <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2"
+                  strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        <h1 className="flex-1 text-lg font-bold text-gold-gradient">
+          สแกน QR เพื่อรับสิทธิ์
+        </h1>
+        {/* Step dots */}
+        <div className="flex gap-1.5">
+          {[1,2,3].map(n => (
+            <div key={n} className={`w-2 h-2 rounded-full transition-colors
+              ${step === 'scanning' && n===1 ? 'bg-[#F7D37A]' :
+                step === 'confirm'  && n===2 ? 'bg-[#F7D37A]' :
+                step === 'success'  && n===3 ? 'bg-green-400' :
+                'bg-[rgba(201,150,58,.2)]'}`}/>
+          ))}
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto no-scrollbar">
+        <AnimatePresence mode="wait">
+
+          {/* ── SCANNING ── */}
+          {step === 'scanning' && (
+            <motion.div key="scan" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+                        className="flex flex-col gap-4 p-5">
+              {/* Camera */}
+              <div className="relative rounded-3xl overflow-hidden bg-black aspect-square
+                              shadow-[0_8px_32px_rgba(0,0,0,.6),0_0_0_1.5px_rgba(201,150,58,.3)]">
+                <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
+                <canvas ref={canvasRef} className="hidden" />
+
+                {/* Gold ornate frame */}
+                <div className="absolute inset-0 pointer-events-none">
+                  <svg viewBox="0 0 320 320" className="w-full h-full">
+                    <defs>
+                      <linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#FBF0C8"/>
+                        <stop offset="50%" stopColor="#C9963A"/>
+                        <stop offset="100%" stopColor="#8B6914"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M60 100 L60 60 L100 60" fill="none" stroke="url(#fg)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="60" cy="60" r="5" fill="#F7D37A"/>
+                    <path d="M220 60 L260 60 L260 100" fill="none" stroke="url(#fg)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="260" cy="60" r="5" fill="#F7D37A"/>
+                    <path d="M60 220 L60 260 L100 260" fill="none" stroke="url(#fg)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="60" cy="260" r="5" fill="#F7D37A"/>
+                    <path d="M220 260 L260 260 L260 220" fill="none" stroke="url(#fg)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="260" cy="260" r="5" fill="#F7D37A"/>
+                  </svg>
+                </div>
+
+                {/* Scan beam */}
+                <div className="absolute left-[20%] right-[20%] h-0.5 scan-beam
+                                bg-gradient-to-r from-transparent via-[rgba(255,200,80,1)] to-transparent
+                                shadow-[0_0_8px_rgba(255,200,80,.7)]" />
+
+                <p className="absolute bottom-4 left-0 right-0 text-center
+                              text-xs text-[rgba(247,211,122,.6)] font-medium">
+                  📍 กำลังตรวจสอบตำแหน่ง GPS...
+                </p>
+              </div>
+
+              <p className="text-center text-sm font-bold text-gold-gradient">
+                วางกล้องตรง QR Code ของร้านค้า
+              </p>
+
+              {/* Demo button */}
+              <button onClick={() => handleQRFound('0812345678')}
+                      className="relative w-full py-4 rounded-2xl overflow-hidden btn-shimmer
+                                 bg-gradient-to-r from-[#FBF0C8] via-[#F7D37A] to-[#C9963A]
+                                 text-[#3a1a00] font-extrabold text-lg
+                                 shadow-gold active:scale-[.97] transition-transform">
+                🎯 จำลองสแกน (Demo)
+              </button>
+            </motion.div>
+          )}
+
+          {/* ── CONFIRM ── */}
+          {step === 'confirm' && merchant && (
+            <motion.div key="confirm"
+                        initial={{opacity:0,x:40}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-40}}
+                        className="flex flex-col gap-4 p-5">
+              {/* Merchant card */}
+              <div className="relative flex items-center gap-4 p-4 rounded-2xl overflow-hidden
+                              bg-gradient-to-r from-[rgba(100,20,0,.8)] to-[rgba(60,0,10,.9)]
+                              border border-[rgba(201,150,58,.3)] card-shine
+                              shadow-card">
+                <div className="w-14 h-14 rounded-2xl flex-shrink-0 text-3xl
+                                bg-gradient-to-br from-[#F7D37A] to-[#C9963A]
+                                flex items-center justify-center
+                                shadow-[0_4px_12px_rgba(201,150,58,.4)]">
+                  🏪
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-extrabold text-[#FDF5E6]">{merchant.name}</p>
+                  <p className="text-xs text-[rgba(251,240,200,.5)] mt-0.5 flex items-center gap-1">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"
+                            stroke="currentColor" strokeWidth="1.5"/>
+                    </svg>
+                    ห่าง {distance ?? '–'} เมตร
+                  </p>
+                  {gpsOk ? (
+                    <span className="inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-full
+                                     bg-[rgba(34,197,94,.15)] border border-[rgba(34,197,94,.3)]
+                                     text-green-400 text-xs font-bold">
+                      ✓ อยู่ในระยะ 20m
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-full
+                                     bg-[rgba(239,68,68,.15)] border border-[rgba(239,68,68,.3)]
+                                     text-red-400 text-xs font-bold">
+                      ✗ ไกลเกินไป ({distance}m)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Form */}
+              <div className="bg-black/25 border border-[rgba(201,150,58,.2)]
+                              rounded-2xl p-4 space-y-3">
+                <p className="text-sm font-bold text-[#F7D37A]">กรอกข้อมูลเพื่อรับสิทธิ์</p>
+                <div>
+                  <label className="text-xs text-[rgba(251,240,200,.5)] font-medium block mb-1.5">
+                    ชื่อ-นามสกุล
+                  </label>
+                  <input value={formName} onChange={e => setFormName(e.target.value)}
+                         className="w-full px-4 py-3.5 rounded-xl
+                                    bg-black/35 border border-[rgba(201,150,58,.2)]
+                                    text-[#FDF5E6] font-medium text-base
+                                    placeholder-[rgba(251,240,200,.25)]
+                                    focus:outline-none focus:border-[rgba(201,150,58,.5)]
+                                    transition-colors"
+                         placeholder="กรอกชื่อ-นามสกุล"/>
+                </div>
+                <div>
+                  <label className="text-xs text-[rgba(251,240,200,.5)] font-medium block mb-1.5">
+                    เบอร์โทรศัพท์
+                  </label>
+                  <input value={formPhone} onChange={e => setFormPhone(e.target.value)}
+                         type="tel" maxLength={10}
+                         className="w-full px-4 py-3.5 rounded-xl
+                                    bg-black/35 border border-[rgba(201,150,58,.2)]
+                                    text-[#FDF5E6] font-medium text-base
+                                    placeholder-[rgba(251,240,200,.25)]
+                                    focus:outline-none focus:border-[rgba(201,150,58,.5)]
+                                    transition-colors"
+                         placeholder="085-123-XXXX"/>
+                </div>
+              </div>
+
+              {/* Quota */}
+              <div className="flex gap-2.5">
+                {[
+                  { n: todaySc,          l: 'สแกนไปแล้ว' },
+                  { n: 3 - todaySc,      l: 'เหลือวันนี้' },
+                  { n: 3,                l: 'จำกัด/วัน'  },
+                ].map(({ n, l }) => (
+                  <div key={l} className="flex-1 bg-black/25 border border-[rgba(201,150,58,.2)]
+                                          rounded-xl p-3 text-center">
+                    <p className="text-2xl font-black text-gold-gradient leading-none">{n}</p>
+                    <p className="text-[10px] text-[rgba(251,240,200,.4)] mt-1">{l}</p>
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={handleClaim}
+                      disabled={!gpsOk || !formName || !formPhone || loading}
+                      className="relative w-full py-4 rounded-2xl overflow-hidden btn-shimmer
+                                 bg-gradient-to-r from-[#FBF0C8] via-[#F7D37A] to-[#C9963A]
+                                 text-[#3a1a00] font-extrabold text-lg
+                                 shadow-gold active:scale-[.97] transition-transform
+                                 disabled:opacity-50 disabled:pointer-events-none">
+                {loading ? '⏳ กำลังส่ง...' : '🎊 ยืนยันรับสิทธิ์!'}
+              </button>
+
+              <button onClick={() => setStep('scanning')}
+                      className="w-full py-3 rounded-xl border border-[rgba(201,150,58,.2)]
+                                 text-[rgba(251,240,200,.5)] text-sm font-medium bg-transparent">
+                ยกเลิก / สแกนใหม่
+              </button>
+            </motion.div>
+          )}
+
+          {/* ── SUCCESS ── */}
+          {step === 'success' && result && (
+            <motion.div key="success"
+                        initial={{opacity:0,scale:.9}} animate={{opacity:1,scale:1}}
+                        className="flex flex-col items-center p-6 gap-5 text-center">
+              <div className="text-7xl animate-popIn">🎉</div>
+              <div>
+                <h2 className="text-3xl font-black text-gold-gradient">ยินดีด้วย!</h2>
+                <p className="text-sm text-[rgba(251,240,200,.6)] mt-1">
+                  คุณได้รับฉลากดิจิทัล 1 ใบ
+                </p>
+              </div>
+
+              {/* Ticket */}
+              <div className="w-full bg-gradient-to-br from-[#FBF0C8] via-[#F7D37A] to-[#C9963A]
+                              rounded-3xl p-6 shadow-gold-lg relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1/2 h-full
+                                bg-white/10 -skew-x-12 pointer-events-none"/>
+                <p className="text-xs font-bold text-[rgba(58,26,0,.6)] uppercase tracking-widest mb-2">
+                  รหัสฉลากของคุณ
+                </p>
+                <p className="text-5xl font-black text-[#3a1a00] tracking-[6px]
+                              drop-shadow-[0_2px_4px_rgba(0,0,0,.1)]">
+                  {result.ticketCode}
+                </p>
+                <p className="text-xs text-[rgba(58,26,0,.6)] font-semibold mt-3">
+                  🏪 {merchant?.name} · {new Date().toLocaleDateString('th-TH')}
+                </p>
+              </div>
+
+              {/* Summary */}
+              <div className="w-full flex gap-3">
+                {[
+                  { n: result.todayUsed,       l: 'สแกนวันนี้'    },
+                  { n: result.remainingToday,  l: 'เหลือวันนี้'   },
+                  { n: result.todayUsed + 1,   l: 'ฉลากทั้งหมด'  },
+                ].map(({ n, l }) => (
+                  <div key={l} className="flex-1 bg-black/25 border border-[rgba(201,150,58,.2)]
+                                          rounded-xl p-3 text-center">
+                    <p className="text-2xl font-black text-gold-gradient leading-none">{n}</p>
+                    <p className="text-[10px] text-[rgba(251,240,200,.4)] mt-1">{l}</p>
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={() => router.push('/me')}
+                      className="relative w-full py-4 rounded-2xl overflow-hidden btn-shimmer
+                                 bg-gradient-to-r from-[#FBF0C8] via-[#F7D37A] to-[#C9963A]
+                                 text-[#3a1a00] font-extrabold text-lg shadow-gold
+                                 active:scale-[.97] transition-transform">
+                🎫 ดูฉลากทั้งหมด
+              </button>
+
+              <button onClick={() => { setStep('scanning'); setMerchant(null) }}
+                      className="w-full py-3 rounded-xl border border-[rgba(201,150,58,.2)]
+                                 text-[rgba(251,240,200,.5)] text-sm font-medium bg-transparent">
+                กลับหน้าหลัก
+              </button>
+            </motion.div>
+          )}
+
+          {/* ── ERROR ── */}
+          {step === 'error' && (
+            <motion.div key="error" initial={{opacity:0}} animate={{opacity:1}}
+                        className="flex flex-col items-center p-8 gap-5 text-center">
+              <div className="text-6xl">😢</div>
+              <div>
+                <h2 className="text-xl font-black text-red-400">เกิดข้อผิดพลาด</h2>
+                <p className="text-sm text-[rgba(251,240,200,.55)] mt-2">{error}</p>
+              </div>
+              <button onClick={() => { setStep('scanning'); setError('') }}
+                      className="relative w-full py-4 rounded-2xl overflow-hidden btn-shimmer
+                                 bg-gradient-to-r from-[#FBF0C8] via-[#F7D37A] to-[#C9963A]
+                                 text-[#3a1a00] font-extrabold text-lg shadow-gold
+                                 active:scale-[.97] transition-transform">
+                ลองใหม่อีกครั้ง
+              </button>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
+      </div>
+    </div>
+  )
 }
