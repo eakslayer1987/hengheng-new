@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Campaign {
+  id          Int             @id @default(autoincrement())
+  name        String
+  description String?         @db.Text
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean         @default(true)
+  totalBudget Int             @default(1000000)
+  codesPerBag Int             @default(30)
+  createdAt   DateTime        @default(now())
+  prizes      Prize[]
+  quotas      MerchantQuota[]
+  codes       CollectedCode[]
+}
+
+model Prize {
+  id          Int             @id @default(autoincrement())
+  campaignId  Int
+  campaign    Campaign        @relation(fields: [campaignId], references: [id])
+  name        String
+  value       Int
+  quantity    Int             @default(1)
+  remaining   Int             @default(1)
+  imageUrl    String?
+  sortOrder   Int             @default(0)
+  wonCodes    CollectedCode[]
+}
+
+model CollectedCode {
+  id             Int            @id @default(autoincrement())
+  code           String         @unique
+  campaignId     Int
+  campaign       Campaign       @relation(fields: [campaignId], references: [id])
+  merchantId     Int
+  merchant       Merchant       @relation(fields: [merchantId], references: [id])
+  quotaId        Int?
+  quota          MerchantQuota? @relation(fields: [quotaId], references: [id])
+  customerName   String
+  customerPhone  String
+  lineUserId     String?
+  isWinner       Boolean        @default(false)
+  prizeId        Int?
+  prize          Prize?         @relation(fields: [prizeId], references: [id])
+  claimStatus    String         @default("pending")
+  claimedAt      DateTime?
+  collectedAt    DateTime       @default(now())
+  @@index([customerPhone])
+  @@index([merchantId])
+  @@index([campaignId])
+  @@index([customerPhone, collectedAt])
+}
+
+model AdminUser {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}
+
+model Merchant {
+  id              Int             @id @default(autoincrement())
+  name            String
+  ownerName       String
+  phone           String          @unique
+  lineUserId      String?
+  lineDisplayName String?
+  lineAvatarUrl   String?
+  address         String?         @db.Text
+  lat             Float?
+  lng             Float?
+  status          String          @default("pending")
+  isActive        Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  receipts        Receipt[]
+  quotas          MerchantQuota[]
+  collectedCodes  CollectedCode[]
+  @@index([phone])
+  @@index([status])
+}
+
+model Receipt {
+  id          Int            @id @default(autoincrement())
+  merchantId  Int
+  merchant    Merchant       @relation(fields: [merchantId], references: [id])
+  imageUrl    String
+  bagCount    Int            @default(1)
+  status      String         @default("pending")
+  reviewNote  String?
+  reviewedAt  DateTime?
+  submittedAt DateTime       @default(now())
+  quota       MerchantQuota?
+  @@index([merchantId])
+  @@index([status])
+}
+
+model MerchantQuota {
+  id             Int             @id @default(autoincrement())
+  merchantId     Int
+  merchant       Merchant        @relation(fields: [merchantId], references: [id])
+  receiptId      Int             @unique
+  receipt        Receipt         @relation(fields: [receiptId], references: [id])
+  campaignId     Int
+  campaign       Campaign        @relation(fields: [campaignId], references: [id])
+  totalCodes     Int
+  usedCodes      Int             @default(0)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  collectedCodes CollectedCode[]
+  @@index([merchantId])
+  @@index([campaignId])
+}
+
+model OtpCode {
+  id        Int      @id @default(autoincrement())
+  phone     String
+  code      String
+  purpose   String   @default("register")
+  verified  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([phone])
+}
+
+model SystemConfig {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @db.Text
+  label     String?
+  updatedAt DateTime @updatedAt
+  @@index([key])
+}
+
+model Banner {
+  id             Int       @id @default(autoincrement())
+  position       String
+  type           String    @default("announcement")
+  title          String?
+  body           String?   @db.Text
+  imageUrl       String?
+  videoUrl       String?
+  linkUrl        String?
+  linkTarget     String    @default("_blank")
+  bgColor        String    @default("#FD1803")
+  textColor      String    @default("#FFFFFF")
+  ctaText        String?
+  targetAudience String    @default("all")
+  showMobile     Boolean   @default(true)
+  showDesktop    Boolean   @default(true)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  priority       Int       @default(0)
+  delayMs        Int       @default(0)
+  dismissDays    Int       @default(1)
+  isActive       Boolean   @default(false)
+  impressions    Int       @default(0)
+  clicks         Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  @@index([position, isActive])
+}
+
+model UploadedFile {
+  id        Int      @id @default(autoincrement())
+  filename  String
+  mimeType  String   @default("image/jpeg")
+  size      Int      @default(0)
+  data      Bytes    @db.LongBlob
+  createdAt DateTime @default(now())
+}
+
+// ─── SMART QR RULES ────────────────────────────────────────────────
+// แต่ละ rule ถูก evaluate ก่อน collect — ถ้า fail → block พร้อม message
+model QrRule {
+  id          Int      @id @default(autoincrement())
+  name        String                         // ชื่อ rule (สำหรับ admin)
+  ruleType    String                         // time | day_of_week | scan_count | geo | campaign_period
+  // time rule: "08:00-12:00"  (เฉพาะช่วงเวลา)
+  // day_of_week: "1,2,3,4,5"  (0=อาทิตย์ ... 6=เสาร์)
+  // scan_count: JSON { "from": 1, "to": 100, "linkUrl": "..." }
+  // geo: ใช้ค่า gps_radius_m จาก SystemConfig
+  // campaign_period: ตรวจ campaign isActive อยู่แล้ว
+  value       String   @db.Text             // ค่า config ตาม ruleType
+  blockMessage String  @db.Text             // ข้อความแสดงเมื่อ block
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0)          // เรียง evaluate ก่อน-หลัง
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([isActive])
+}
+
+// ─── Rider (food delivery — required for type check) ───────────────────────
+model Rider {
+  id          Int      @id @default(autoincrement())
+  name        String
+  phone       String   @unique
+  pin         String   @default("1234")
+  photo       String?
+  lineUserId  String?
+  status      String   @default("offline")  // online | busy | offline
+  lat         Float?
+  lng         Float?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([phone])
+  @@index([status])
+}

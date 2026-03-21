@@ -1,0 +1,31 @@
+// เพิ่มใน prisma/schema.prisma ต่อจาก model ที่มีอยู่แล้ว
+
+model DigitalTicket {
+  id            Int       @id @default(autoincrement())
+  merchantId    Int
+  merchant      Merchant  @relation(fields: [merchantId], references: [id])
+  receiptId     Int
+  receipt       Receipt   @relation(fields: [receiptId], references: [id])
+  campaignId    Int
+  campaign      Campaign  @relation(fields: [campaignId], references: [id])
+  ticketCode    String    @unique  // 6-digit random e.g. "123456"
+  status        String    @default("unclaimed")  // unclaimed | activated
+  // activated info
+  customerPhone String?
+  customerName  String?
+  activatedAt   DateTime?
+  // draw result
+  isWinner      Boolean   @default(false)
+  drawPeriod    String?   // e.g. "2026-03-01/2026-03-15"
+  createdAt     DateTime  @default(now())
+
+  @@index([merchantId])
+  @@index([receiptId])
+  @@index([status])
+  @@index([customerPhone])
+}
+
+// ต้องเพิ่ม relation ใน model ที่มีอยู่แล้วด้วย:
+// model Merchant  { ... tickets DigitalTicket[] }
+// model Receipt   { ... tickets DigitalTicket[] }
+// model Campaign  { ... tickets DigitalTicket[] }

@@ -1,0 +1,12 @@
+Options -Indexes
+
+# Admin protection
+<FilesMatch "^(db|auth|functions|layout)\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# PHP settings
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 60
