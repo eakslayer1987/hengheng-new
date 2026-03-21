@@ -12,7 +12,7 @@ export const useCampaign = () =>
 
 // ── Banners ───────────────────────────────────────────────────────────────
 export const useBanners = (position: string) =>
-  useSWR(['banners', position], () => api.getBanners(position))
+  useSWR(['banners', position], () => api.getBanners(position as api.BannerPosition))
 
 // ── Merchant status ───────────────────────────────────────────────────────
 export const useMerchantStatus = (phone: string | null) =>
