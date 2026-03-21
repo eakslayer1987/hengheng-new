@@ -1,14 +1,14 @@
-// ─────────────────────────────────────────────────────────────────────────
-// components/layout/BottomNav.tsx
-// ─────────────────────────────────────────────────────────────────────────
 'use client'
+import React from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-const ITEMS = [
+type IconFC = React.FC<React.SVGProps<SVGSVGElement>>
+
+const ITEMS: { key: string; label: string; href: string; icon: IconFC | null }[] = [
   { key:'home',    label:'หน้าหลัก', href:'/home',    icon: HomeIcon },
   { key:'rewards', label:'รางวัล',   href:'/rewards', icon: StarIcon },
-  { key:'scan',    label:'สแกน',     href:'/scan',    icon: null     }, // FAB
+  { key:'scan',    label:'สแกน',     href:'/scan',    icon: null     },
   { key:'map',     label:'แผนที่',   href:'/map',     icon: MapIcon  },
   { key:'me',      label:'ฉันๆ',     href:'/me',      icon: UserIcon },
 ]
@@ -39,8 +39,8 @@ export default function BottomNav({ active }: { active: string }) {
                     'flex-1 flex flex-col items-center gap-1 py-2.5 bg-transparent border-none cursor-pointer relative',
                     active === key && 'after:content-[""] after:absolute after:top-0 after:left-1/2 after:-translate-x-1/2 after:w-6 after:h-0.5 after:rounded-b-sm after:bg-gradient-to-r after:from-[#F7D37A] after:to-[#C9963A]'
                   )}>
-            <Icon className={cn('w-[22px] h-[22px] transition-colors',
-                                active === key ? 'text-[#F7D37A]' : 'text-[rgba(251,240,200,.35)]')}/>
+            {Icon && <Icon className={cn('w-[22px] h-[22px] transition-colors',
+                                active === key ? 'text-[#F7D37A]' : 'text-[rgba(251,240,200,.35)]')}/>}
             <span className={cn('text-[10px] font-semibold transition-colors',
                                 active === key ? 'text-[#F7D37A]' : 'text-[rgba(251,240,200,.35)]')}>
               {label}
@@ -52,67 +52,6 @@ export default function BottomNav({ active }: { active: string }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// components/cards/StatCard.tsx
-// ─────────────────────────────────────────────────────────────────────────
-export function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div className="flex-1 bg-black/25 border border-[rgba(201,150,58,.2)]
-                    rounded-xl p-3 text-center">
-      <p className={cn('text-2xl font-black leading-none',
-                       color === 'green' ? 'text-green-400' : 'text-gold-gradient text-[#F7D37A]')}>
-        {value}
-      </p>
-      <p className="text-[10px] text-[rgba(251,240,200,.4)] mt-1 font-medium">{label}</p>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// components/cards/BannerCarousel.tsx
-// ─────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState } from 'react'
-import { useBanners } from '@/lib/hooks'
-
-const FALLBACK_BANNERS = [
-  { id:1, title:'ลุ้นทองล้านบาท!', body:'สแกน QR ครบ 5 ร้าน รับสิทธิ์ทันที', bgColor:'#4a1500' },
-  { id:2, title:'March Means More', body:'เปลี่ยนคะแนนเป็นรางวัลสุดพิเศษ',    bgColor:'#002a1a' },
-  { id:3, title:'Double Win!',       body:'ฉลากคู่ โอกาสชนะคูณสอง',            bgColor:'#1a0040' },
-]
-
-export function BannerCarousel({ position }: { position: string }) {
-  const { data } = useBanners(position)
-  const banners  = data?.banners ?? FALLBACK_BANNERS
-  const [cur, setCur] = useState(0)
-  const timer = useRef<NodeJS.Timeout>()
-
-  useEffect(() => {
-    timer.current = setInterval(() => setCur(c => (c + 1) % banners.length), 3500)
-    return () => clearInterval(timer.current)
-  }, [banners.length])
-
-  const b = banners[cur] as any
-  return (
-    <div className="mx-5 rounded-2xl overflow-hidden border border-[rgba(201,150,58,.25)]
-                    shadow-card relative" style={{ background: b.bgColor ?? '#3a0010' }}>
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_60%_40%,rgba(201,150,58,.2)_0%,transparent_70%)]"/>
-      <div className="relative p-5">
-        <p className="text-xl font-black text-gold-gradient leading-tight">{b.title}</p>
-        <p className="text-xs text-[rgba(251,240,200,.6)] mt-1.5 leading-relaxed">{b.body}</p>
-      </div>
-      {/* Dots */}
-      <div className="flex gap-1.5 justify-center pb-3">
-        {banners.map((_,i) => (
-          <button key={i} onClick={() => setCur(i)}
-                  className={cn('rounded-full h-1.5 transition-all',
-                                i === cur ? 'w-4 bg-[#F7D37A]' : 'w-1.5 bg-[rgba(201,150,58,.3)]')}/>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Icon helpers ──────────────────────────────────────────────────────────
 function HomeIcon(p: React.SVGProps<SVGSVGElement>) {
   return <svg {...p} viewBox="0 0 24 24" fill="none">
     <path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
