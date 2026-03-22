@@ -7,11 +7,11 @@ import { useAppStore } from '@/store'
 import { fmt, formatThaiDate } from '@/lib/utils'
 import BottomNav from '@/components/layout/BottomNav'
 import type { Merchant } from '@/lib/api'
-import dynamic from 'next/dynamic'
+import dynamicImport from 'next/dynamic'
 
-export const dynamic_export = 'force-dynamic'
+export const dynamic = 'force-dynamic'
 
-const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
+const LeafletMap = dynamicImport(() => import('@/components/map/LeafletMap'), {
   ssr: false,
   loading: () => (
     <div className="flex-1 flex items-center justify-center flex-col gap-3">
