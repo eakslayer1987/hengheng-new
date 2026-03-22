@@ -31,8 +31,8 @@ export default function MapPage() {
 
   const { data: merchantData } = useMerchants()
   const { data: feedData }     = useFeed(20)
-  const merchants = (merchantData?.merchants ?? []) as any[]
-  const feed      = (feedData?.feed ?? []) as any[]
+  const merchants = (merchantData ?? []) as any[]
+  const feed      = (feedData ?? []) as any[]
 
   const filtered = merchants.filter(m => {
     if (filter === 'hasQr') return m.qrRemaining > 0
