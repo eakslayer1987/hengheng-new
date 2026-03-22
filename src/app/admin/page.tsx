@@ -47,7 +47,7 @@ const sCard: React.CSSProperties = {
 }
 const sBtn = (variant: 'primary'|'secondary'|'danger'|'gold' = 'primary'): React.CSSProperties => ({
   display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+  padding: '7px 16px', borderRadius: 10, cursor: 'pointer',
   fontFamily: "'Kanit',sans-serif", fontSize: 12, fontWeight: 700,
   background: variant === 'primary' ? '#1D4ED8'
     : variant === 'gold'    ? `linear-gradient(135deg,${C.g3},${C.g})`
