@@ -69,7 +69,7 @@ export default function MerchantPage() {
     await registerMerchant.trigger({
       name: regForm.name, ownerName: regForm.ownerName,
       address: regForm.address, phone: phone.replace(/\D/g, ''),
-      lat: coords.lat, lng: coords.lng, otpVerified: true,
+      lat: coords.lat, lng: coords.lng, 
     })
     setScreen('pending')
   }
