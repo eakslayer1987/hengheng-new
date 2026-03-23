@@ -4,20 +4,18 @@
  * Theme: Red Gold matching poster
  * FIX: BottomNav + working Leaflet + red-gold theme
  */
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { useMerchants, useFeed } from '@/lib/hooks'
-import { useAppStore } from '@/store'
 import { formatThaiDate } from '@/lib/utils'
 import BottomNav from '@/components/layout/BottomNav'
-import type { Merchant } from '@/lib/api'
-import dynamic from 'next/dynamic'
+import dynamicImport from 'next/dynamic'
 
 export const dynamic = 'force-dynamic'
 
 // Dynamic import LeafletMap (SSR off — Leaflet needs window)
-const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
+const LeafletMap = dynamicImport(() => import('@/components/map/LeafletMap'), {
   ssr: false,
   loading: () => (
     <div className="flex-1 flex items-center justify-center flex-col gap-3
