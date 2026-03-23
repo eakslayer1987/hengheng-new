@@ -13,11 +13,28 @@ import { cn } from '@/lib/utils'
 export default function LoginPage() {
   const router  = useRouter()
   const lineId  = useUserStore(s => s.lineId)
+  const setUser = useUserStore(s => s.setUser)
 
-  // already logged in → go home
+  // Check if already logged in (via JWT cookie)
   useEffect(() => {
-    if (lineId) router.replace('/home')
-  }, [lineId, router])
+    if (lineId) {
+      router.replace('/home')
+      return
+    }
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        if (d.user) {
+          setUser({
+            lineId: d.user.lineId,
+            lineDisplayName: d.user.lineDisplayName,
+            lineAvatarUrl: d.user.lineAvatarUrl,
+          })
+          router.replace('/home')
+        }
+      })
+      .catch(() => {})
+  }, [lineId, setUser, router])
 
   const handleLineLogin = () => {
     window.location.href = '/api/auth/line'

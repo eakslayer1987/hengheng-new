@@ -27,13 +27,32 @@ export default function HomePage() {
   const name     = useUserStore(s => s.lineDisplayName)
   const phone    = useUserStore(s => s.phone)
   const todaySc  = useUserStore(s => s.todayScans)
+  const setUser  = useUserStore(s => s.setUser)
   const setCamp  = useAppStore(s => s.setCampaign)
 
   const { data: campaign } = useCampaign()
   const { data: feed }     = useFeed(8)
   const { data: codesData }= useMyCodes(phone)
 
-  useEffect(() => { if (!lineId) router.replace('/') }, [lineId, router])
+  // Hydrate store from JWT session
+  useEffect(() => {
+    if (!lineId) {
+      fetch('/api/auth/me')
+        .then(r => r.json())
+        .then(d => {
+          if (d.user) {
+            setUser({
+              lineId: d.user.lineId,
+              lineDisplayName: d.user.lineDisplayName,
+              lineAvatarUrl: d.user.lineAvatarUrl,
+            })
+          } else {
+            router.replace('/')
+          }
+        })
+        .catch(() => router.replace('/'))
+    }
+  }, [lineId, setUser, router])
   useEffect(() => { if (campaign) setCamp(campaign) }, [campaign, setCamp])
 
   return (
