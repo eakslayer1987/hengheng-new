@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const PHP = process.env.NEXT_PUBLIC_PHP_API_URL!
-const ADMIN_URL = PHP.replace('/api', '/admin')
+const ADMIN_URL = PHP ? PHP.replace('/api', '/admin') : ''
 
 // ─── Theme ───────────────────────────────────────────────────────────────
 const C = {
@@ -635,7 +635,7 @@ export default function AdminPage() {
                   style={{
                     flex: 1, display: 'flex', flexDirection: 'column',
                     alignItems: 'center', gap: 2, padding: '8px 0',
-                    background: 'none', border: 'none', cursor: 'pointer',
+                    background: 'none', cursor: 'pointer',
                     color: tab === t.key ? C.g : C.mut,
                     fontFamily: "'Kanit',sans-serif",
                   }}>
