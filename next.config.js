@@ -9,7 +9,7 @@ const nextConfig = {
         // Proxy /hengheng/* ทั้งหมดไป VPS
         // ทำให้ เฮงเฮง.ปังจัง.com/hengheng/admin/ ทำงานได้
         source: '/hengheng/:path*',
-        destination: 'http://203.170.192.192/hengheng/:path*',
+        destination: 'https://xn--72cac8e8ec.com/hengheng/:path*',
       },
     ]
   },
