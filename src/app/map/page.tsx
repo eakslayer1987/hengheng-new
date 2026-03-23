@@ -14,7 +14,7 @@ import BottomNav from '@/components/layout/BottomNav'
 import type { Merchant } from '@/lib/api'
 import dynamic from 'next/dynamic'
 
-export const revalidate = 0
+export const dynamic = 'force-dynamic'
 
 // Dynamic import LeafletMap (SSR off — Leaflet needs window)
 const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
