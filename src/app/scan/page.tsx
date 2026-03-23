@@ -2,6 +2,7 @@
 /**
  * /app/scan/page.tsx — QR Scan Flow
  * 1. Camera + jsQR  2. GPS check  3. Form  4. POST claim
+ * FIX: Added BottomNav component
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react'
@@ -13,6 +14,7 @@ import { useClaim } from '@/lib/hooks'
 import { getMerchantStatus } from '@/lib/api'
 import { getUserLocation, haversineDistance } from '@/lib/utils'
 import type { Merchant, ClaimResult } from '@/lib/api'
+import BottomNav from '@/components/layout/BottomNav'
 
 type Step = 'scanning' | 'confirm' | 'success' | 'error'
 
@@ -85,7 +87,6 @@ export default function ScanPage() {
   const handleQRFound = async (data: string) => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     try {
-      // phone of merchant is encoded in QR
       const merchantPhone = data.trim()
       const [mer, coords] = await Promise.all([
         getMerchantStatus(merchantPhone),
@@ -133,7 +134,7 @@ export default function ScanPage() {
 
   return (
     <div className="flex flex-col h-dvh max-w-[430px] mx-auto overflow-hidden
-                    bg-gradient-to-b from-[#7A0018] to-[#3D0008] damask-bg">
+                    bg-gradient-to-b from-[#C41E3A] via-[#8B001A] to-[#3D0008] damask-bg">
 
       {/* Topbar */}
       <header className="flex items-center gap-3 px-5 h-14 flex-shrink-0
@@ -161,7 +162,7 @@ export default function ScanPage() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar">
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
         <AnimatePresence mode="wait">
 
           {/* ── SCANNING ── */}
@@ -333,7 +334,7 @@ export default function ScanPage() {
             <motion.div key="success"
                         initial={{opacity:0,scale:.9}} animate={{opacity:1,scale:1}}
                         className="flex flex-col items-center p-6 gap-5 text-center">
-              <div className="text-7xl animate-popIn">🎉</div>
+              <div className="text-7xl animate-glowPulse">🎉</div>
               <div>
                 <h2 className="text-3xl font-black text-gold-gradient">ยินดีด้วย!</h2>
                 <p className="text-sm text-[rgba(251,240,200,.6)] mt-1">
@@ -384,7 +385,7 @@ export default function ScanPage() {
               <button onClick={() => { setStep('scanning'); setMerchant(null) }}
                       className="w-full py-3 rounded-xl border border-[rgba(201,150,58,.2)]
                                  text-[rgba(251,240,200,.5)] text-sm font-medium bg-transparent">
-                กลับหน้าหลัก
+                สแกนอีกครั้ง
               </button>
             </motion.div>
           )}
@@ -410,6 +411,8 @@ export default function ScanPage() {
 
         </AnimatePresence>
       </div>
+
+      <BottomNav active="scan" />
     </div>
   )
 }
